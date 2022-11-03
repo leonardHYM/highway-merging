@@ -160,8 +160,8 @@ def visualizer_rllib(args):
     else:
         env = gym.make(env_name)
 
-    if args.render_mode == 'sumo_gui':
-        env.sim_params.render = True  # set to True after initializing agent and env
+    #if args.render_mode == 'sumo_gui':
+    #    env.sim_params.render = True  # set to True after initializing agent and env
 
     if multiagent:
         rets = {}
@@ -234,7 +234,7 @@ def visualizer_rllib(args):
             
             # for all cars:
             speeds = vehicles.get_speed(vehicles.get_ids())
-            time_headway = vehicles.get_headway(vehicles.get_ids())  #computing time_headway
+            time_headway = vehicles.get_headway(vehicles.get_ids())  #computing distance_headway in each horizon
             # all cars' id in 1s:
             id_for_all = vehicles.get_ids()
             
@@ -282,10 +282,10 @@ def visualizer_rllib(args):
                 if np.mean(time_headway) > 0:
                     mean_head_per_horizon.append(np.mean(time_headway))
                 if np.min(time_headway) > 0 :
-                    min_head_per_horizon.append(np.min(time_headway))  # min time headway per horizon
+                    min_head_per_horizon.append(np.min(time_headway))  # minimum distance headway of all cars in one horizon
                     
             #getting the merge vehicle:
-            merge_ids = vehicles.get_ids_by_edge("inflow_merge")  
+            merge_ids = vehicles.get_ids_by_edge("inflow_merge")     # all the merging vehicles
             # for merge vehicles:
             merge_speeds = []
             merge_timeheadways = []
@@ -296,9 +296,9 @@ def visualizer_rllib(args):
                 pos_dict = {'id': str(merge_id), 'position': str(pos)}
                 pos_array.append(pos_dict)
                 merge_speed = vehicles.get_speed(merge_id)
-                merge_timeheadway = vehicles.get_headway(merge_id)
+                merge_timeheadway = vehicles.get_headway(merge_id)   # each merging vehicle's time headway of each horizon
                
-                min_head_per_horizon_merging.append(merge_timeheadway)
+                min_head_per_horizon_merging.append(merge_timeheadway)  # store each merging vehicle's time headway of one horizon in list
                 speed_per_horizon_merging.append(merge_speed)
                 
                 if merge_speed:
@@ -307,7 +307,8 @@ def visualizer_rllib(args):
                     merge_timeheadways.append(merge_timeheadway)
                     #print(merge_timeheadway)
             if min_head_per_horizon_merging:
-                min_head_per_rollout_merging.append(min(min_head_per_horizon_merging))
+                # min_head_per_rollout_merging.append(min(min_head_per_horizon_merging))
+                min_head_per_rollout_merging.append(np.min(min_head_per_horizon_merging)) # min distance headway of merging vehicles in one horizon
             if speed_per_horizon_merging:
                 mean_speed_per_rollout_merging.append(np.mean(speed_per_horizon_merging))
                 
@@ -335,8 +336,8 @@ def visualizer_rllib(args):
             if not multiagent and done:
                 break
         
-        min_head_all_merging.append(min(min_head_per_rollout_merging))
-        mean_head_all_merging.append(np.mean(min_head_per_rollout_merging))
+        min_head_all_merging.append(min(min_head_per_rollout_merging))  # min to horizon, min to cars
+        mean_head_all_merging.append(np.mean(min_head_per_rollout_merging)) # mean to horizon, min to cars
         mean_speed_all_merging.append(np.mean(mean_speed_per_rollout_merging))
                 
         if multiagent:
@@ -357,11 +358,12 @@ def visualizer_rllib(args):
         mean_vel_per_rollouts.append(np.mean(mean_vel_per_horizon))
         min_vel_per_rollouts.append(np.min(min_vel_per_horizon))
         mean_head_per_rollouts.append(np.mean(mean_head_per_horizon))
-        min_head_per_rollouts.append(np.min(min_head_per_horizon))
-        print("min and mean headway of each rollout:\n")
-        print(mean_head_per_rollouts)
-        print(min_head_per_rollouts)
-        print(args.num_rollouts)
+        #min_head_per_rollouts.append(np.min(min_head_per_horizon))
+        min_head_per_rollouts.append(np.mean(min_head_per_horizon)) # min to cars, mean to all horizons (all cars on the highway)
+        #print("min and mean headway of each rollout:\n")
+        #print(mean_head_per_rollouts)
+        #print(min_head_per_rollouts)
+        #print(args.num_rollouts)
         #mean_speed.append(np.mean(vel))
         #std_speed.append(np.std(vel))
         #mean_time_headway.append(np.mean(head))   # timeheadway
@@ -382,16 +384,26 @@ def visualizer_rllib(args):
         
     print('==== Summary of results ====')
     print("Return:")
-    print("THW you need:")
-    print('min_min')
-    print(min_head_all_merging)  # 在merging zone 的全局求min
-    print('mean_min')
+    #print("THW you need:")
+    #print('min_min')
+    #print(min_head_all_merging)  # 在merging zone 的全局求min
+    print('mean_min_headway_mergingzone')
     print(mean_head_all_merging)
+    
+    print("\nMean_min_headway_all")
+    print(min_head_per_rollouts)
+    print("\nMean_min_THeadway_all_cars, min (m/s):")
+    print(np.mean(min_head_per_rollouts))
+    
     print('mean speed you need:')
+    print("\nSpeed, mean (m/s)_merging:")
     print(mean_speed_all_merging)
     
+    print("mean speed of whole highway")
+    print(np.mean(mean_vel_per_rollouts))
     
-    print(mean_speed)
+    
+    #print(mean_speed)
     print(mean_time_headway)
     if multiagent:
         for agent_id, rew in rets.items():
@@ -406,8 +418,7 @@ def visualizer_rllib(args):
 
     #print("\nMean Speed of each rollout")
     #print(mean_vel_per_horizon)
-    print("\nSpeed, mean (m/s):")
-    print(np.mean(mean_vel_per_rollouts))
+    
     
     print("\nMin Speed of each rollout")
     print(min_vel_per_rollouts)
@@ -419,10 +430,11 @@ def visualizer_rllib(args):
     print("\nTHeadway, mean (m/s):")
     print(np.mean(mean_head_per_rollouts))
     
-    print("\nMin THeadway of each rollout")
+    #print("\nMin THeadway of each rollout")
+    print("\nMean_min")
     print(min_head_per_rollouts)
     print("\nTHeadway, min (m/s):")
-    print(np.min(min_head_per_rollouts))
+    print(np.mean(min_head_per_rollouts))
     
     print("\nAverage minimum THeadway value")
     print(np.mean(min_head_per_horizon))

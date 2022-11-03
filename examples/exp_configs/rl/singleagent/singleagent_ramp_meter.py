@@ -8,25 +8,26 @@ from flow.core.params import NetParams, InFlows, SumoCarFollowingParams
 from flow.networks.merge import ADDITIONAL_NET_PARAMS
 from flow.core.params import VehicleParams
 from flow.controllers import IDMController, RLController
-from flow.envs import MergePOEnv
-from flow.networks import MergeNetwork
+from flow.controllers import SimCarFollowingController, GridRouter
+from flow.envs import RampMeterPOEnv
+from flow.networks import RampMeterNetwork
 
 # experiment number
 # - 0: 10% RL penetration,  5 max controllable vehicles
 # - 1: 25% RL penetration, 13 max controllable vehicles
 # - 2: 33% RL penetration, 17 max controllable vehicles
-EXP_NUM = 0
+EXP_NUM = 2
 
 # time horizon of a single rollout
 HORIZON = 600
 # number of rollouts per training iteration
-N_ROLLOUTS = 20
+N_ROLLOUTS = 20    #need to be changed
 # number of parallel workers
 N_CPUS = 48
 
 # inflow rate at the highway
 FLOW_RATE = 2000
-FLOW_PROBABILITY = 2/3
+FLOW_PROBABILITY = 3/4
 # percent of autonomous vehicles
 RL_PENETRATION = [0.1, 0.25, 0.33][EXP_NUM]
 # num_rl term (see ADDITIONAL_ENV_PARAMs)
@@ -57,6 +58,17 @@ vehicles.add(
         speed_mode="obey_safe_speed",
     ),
     num_vehicles=0)
+vehicles.add(
+    veh_id='idm',
+    acceleration_controller=(SimCarFollowingController, {}),
+    car_following_params=SumoCarFollowingParams(
+        minGap=2.5,
+        decel=7.5,  # avoid collisions at emergency stops
+        max_speed=15,
+        speed_mode="obey_safe_speed",
+    ),
+    routing_controller=(GridRouter, {}),
+    num_vehicles=2)
 
 # Vehicles are introduced from both sides of merge, with RL vehicles entering
 # from the highway portion as well
@@ -64,41 +76,47 @@ inflow = InFlows()
 inflow.add(
     veh_type="human",
     edge="inflow_highway",
-    #vehs_per_hour=(1 - RL_PENETRATION) * FLOW_RATE,  #decide the inflow rate of human driver
-    probability = (1 - RL_PENETRATION) * FLOW_PROBABILITY, 
+    # vehs_per_hour=(1 - RL_PENETRATION) * FLOW_RATE,
+    probability = (1 - RL_PENETRATION) * FLOW_PROBABILITY,    # decide the inflow rate : probability for emitting a vehicle each second (between 0 and 1).
     departLane="free",
     departSpeed=10)
 inflow.add(
     veh_type="rl",
     edge="inflow_highway",
-    #vehs_per_hour=RL_PENETRATION * FLOW_RATE,      #decide the inflow rate of RL_Agent
-    probability = (1 - RL_PENETRATION) * FLOW_PROBABILITY, 
+    # vehs_per_hour=RL_PENETRATION * FLOW_RATE,
+    probability = RL_PENETRATION * FLOW_PROBABILITY,         # decide the inflow rate
     departLane="free",
     departSpeed=10)
+# inflow.add(
+#     veh_type="human",
+#     edge="inflow_merge",
+#     vehs_per_hour=100,
+#     departLane="free",
+#     departSpeed=7.5)
 inflow.add(
-    veh_type="human",
+    veh_type="idm",
     edge="inflow_merge",
-    #vehs_per_hour=100,
-    probability = (1 - RL_PENETRATION) * FLOW_PROBABILITY * 0.334, 
+    # vehs_per_hour=100,
+    probability = (1 - RL_PENETRATION) * FLOW_PROBABILITY * 0.334,
     departLane="free",
     departSpeed=7.5)
 
 flow_params = dict(
     # name of the experiment
-    exp_tag="stabilizing_open_network_merges",
+    exp_tag="ramp_meter_merging",
 
     # name of the flow environment the experiment is running on
-    env_name=MergePOEnv,
+    env_name=RampMeterPOEnv,
 
     # name of the network class the experiment is running on
-    network=MergeNetwork,
+    network=RampMeterNetwork,
 
     # simulator that is used by the experiment
     simulator='traci',
 
     # sumo-related parameters (see flow.core.params.SumoParams)
     sim=SumoParams(
-        sim_step=0.2,
+        sim_step=0.5,
         render=False,
         restart_instance=True,
     ),

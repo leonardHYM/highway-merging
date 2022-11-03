@@ -160,8 +160,9 @@ def visualizer_rllib(args):
     else:
         env = gym.make(env_name)
 
-    if args.render_mode == 'sumo_gui':
-        env.sim_params.render = True  # set to True after initializing agent and env
+#we dont want the sumo-gui, so citation this two sentences.
+    #if args.render_mode == 'sumo_gui':
+    #    env.sim_params.render = True  # set to True after initializing agent and env
 
     if multiagent:
         rets = {}
@@ -171,7 +172,7 @@ def visualizer_rllib(args):
             rets[key] = []
     else:
         rets = []
-
+      
     if config['model']['use_lstm']:
         use_lstm = True
         if multiagent:
@@ -182,18 +183,18 @@ def visualizer_rllib(args):
             for key in config['multiagent']['policies'].keys():
                 state_init[key] = [np.zeros(size, np.float32),
                                    np.zeros(size, np.float32)]
-        else:
+        else:      
             state_init = [
                 np.zeros(config['model']['lstm_cell_size'], np.float32),
                 np.zeros(config['model']['lstm_cell_size'], np.float32)
-            ]
-    else:
+            ]     
+    else:         
         use_lstm = False
-
+                  
     # if restart_instance, don't restart here because env.reset will restart later
     if not sim_params.restart_instance:
         env.restart_simulation(sim_params=sim_params, render=sim_params.render)
-
+                  
     # Simulate and collect metrics
     final_outflows = []
     final_inflows = []
@@ -210,7 +211,7 @@ def visualizer_rllib(args):
     min_head_all_merging = []
     mean_head_all_merging = []
     mean_speed_all_merging = []
-    
+      
     for i in range(args.num_rollouts):  # num_rollouts = 1
         mean_vel_per_horizon = []
         min_vel_per_horizon = []
@@ -234,7 +235,9 @@ def visualizer_rllib(args):
             
             # for all cars:
             speeds = vehicles.get_speed(vehicles.get_ids())
-            time_headway = vehicles.get_headway(vehicles.get_ids())  #computing time_headway
+            time_headway = np.array(vehicles.get_headway(vehicles.get_ids()))/ np.array(vehicles.get_speed(vehicles.get_ids())) #computing time_headway
+            #np.divide(vehicles.get_headway(vehicles.get_ids()), vehicles.get_speed(vehicles.get_ids()), time_headway)
+            
             # all cars' id in 1s:
             id_for_all = vehicles.get_ids()
             
@@ -243,42 +246,73 @@ def visualizer_rllib(args):
                 print("id: ", id, " position: ", pos_all)
                 pos_dict_all = {'id': str(id), 'position': str(pos_all)}
                 allcar_pos_array.append(pos_dict_all)
-
-                if pos_all >= 400: #and len(id)<=9
-                    time_headway_mergingZone = vehicles.get_headway(id)
+      
+                if pos_all >= 400: # and len(id)<=9
+                    if vehicles.get_speed(id)>0:
+                        time_headway_mergingZone = np.max((vehicles.get_headway(id)/ vehicles.get_speed(id)), 0)   #computing time_headway of merging zone
+                    else: 
+                        time_headway_mergingZone = 1000
                     min_head_per_horizon_merging.append(time_headway_mergingZone)
                     speed_merging_zone = vehicles.get_speed(id)
                     speed_per_horizon_merging.append(speed_merging_zone)
                     if i+1 < len(id_for_all):
                         if len(id_for_all[i+1])<=9:
-                            time_headway_mergingZone_post1 = vehicles.get_headway(id_for_all[i+1])
+                            if vehicles.get_speed(id_for_all[i+1])>0:
+                                time_headway_mergingZone_post1 = np.max((vehicles.get_headway(id_for_all[i+1])/ vehicles.get_speed(id_for_all[i+1])), 0)
+                            else:
+                                time_headway_mergingZone_post1 = 1000
                             min_head_per_horizon_merging.append(time_headway_mergingZone_post1)
                             speed_merging_zone_post1 = vehicles.get_speed(id_for_all[i+1])
                             speed_per_horizon_merging.append(speed_merging_zone_post1)
                     if i+2 < len(id_for_all):
                         if len(id_for_all[i+2])<=9:
-                            time_headway_mergingZone_post2 = vehicles.get_headway(id_for_all[i+2])
+                            if vehicles.get_speed(id_for_all[i+2])>0:
+                                time_headway_mergingZone_post2 = np.max((vehicles.get_headway(id_for_all[i+2])/ vehicles.get_speed(id_for_all[i+2])), 0)
+                            else:
+                                time_headway_mergingZone_post2 = 1000
+                            #time_headway_mergingZone_post2 = np.max(vehicles.get_headway(id_for_all[i+2])/ vehicles.get_speed(id_for_all[i+2]), 0)
                             min_head_per_horizon_merging.append(time_headway_mergingZone_post2)
                             speed_merging_zone_post2 = vehicles.get_speed(id_for_all[i+2])
                             speed_per_horizon_merging.append(speed_merging_zone_post2)
                     if i+3 < len(id_for_all):
                         if len(id_for_all[i+3])<=9:
-                            time_headway_mergingZone_post3 = vehicles.get_headway(id_for_all[i+3])
+                            if vehicles.get_speed(id_for_all[i+3])>0:
+                                time_headway_mergingZone_post3 = np.max((vehicles.get_headway(id_for_all[i+3])/ vehicles.get_speed(id_for_all[i+3])), 0)
+                            else:
+                                time_headway_mergingZone_post3 = 1000
+                            #time_headway_mergingZone_post3 = np.max(vehicles.get_headway(id_for_all[i+3])/ vehicles.get_speed(id_for_all[i+3]), 0)
                             min_head_per_horizon_merging.append(time_headway_mergingZone_post3)
                             speed_merging_zone_post3 = vehicles.get_speed(id_for_all[i+3])
                             speed_per_horizon_merging.append(speed_merging_zone_post3)
-            
+                    if i+4 < len(id_for_all):
+                        if len(id_for_all[i+4])<=9:
+                            if vehicles.get_speed(id_for_all[i+4])>0:
+                                time_headway_mergingZone_post4 = np.max((vehicles.get_headway(id_for_all[i+4])/ vehicles.get_speed(id_for_all[i+4])), 0)
+                            else:
+                                time_headway_mergingZone_post4 = 1000
+                            #time_headway_mergingZone_post4 = np.max(vehicles.get_headway(id_for_all[i+4])/ vehicles.get_speed(id_for_all[i+4]), 0)
+                            min_head_per_horizon_merging.append(time_headway_mergingZone_post4)
+                            speed_merging_zone_post4 = vehicles.get_speed(id_for_all[i+4])
+                            speed_per_horizon_merging.append(speed_merging_zone_post4)
+                                          
+                elif len(id)>9 and pos_all >=400:
+                    time_headway_mergingZone = np.max(vehicles.get_headway(id)/ vehicles.get_speed(id), 0)
+                    min_head_per_horizon_merging.append(time_headway_mergingZone)
+                    speed_merging_zone = vehicles.get_speed(id)
+                    speed_per_horizon_merging.append(speed_merging_zone)
+                    
+                    
             
             # only include non-empty speeds
             if speeds:
                 mean_vel_per_horizon.append(np.mean(speeds))
                 min_vel_per_horizon.append(np.min(speeds))
             
-            if time_headway:
+            if time_headway.any():
                 
-                lowTHW = np.sum(np.array(time_headway) < 1) # threshold = 1s
-                lowTHW_percent = lowTHW / len(np.array(time_headway))
-                percentage_low_THW.append(lowTHW_percent)
+                #lowTHW = np.sum(time_headway < 1) # np.array(time_headway) # threshold = 1s
+                #lowTHW_percent = lowTHW / len(time_headway)  #np.array(time_headway) 
+                #percentage_low_THW.append(lowTHW_percent)
                 if np.mean(time_headway) > 0:
                     mean_head_per_horizon.append(np.mean(time_headway))
                 if np.min(time_headway) > 0 :
@@ -296,8 +330,14 @@ def visualizer_rllib(args):
                 pos_dict = {'id': str(merge_id), 'position': str(pos)}
                 pos_array.append(pos_dict)
                 merge_speed = vehicles.get_speed(merge_id)
-                merge_timeheadway = vehicles.get_headway(merge_id)
-               
+                #merge_timeheadway = np.max(vehicles.get_headway(merge_id)/ vehicles.get_speed(merge_id), 0)  # compute the real THW
+                #vehicles.get_headway(merge_id) 
+                
+                if merge_speed>0:
+                    merge_timeheadway = np.max(vehicles.get_headway(merge_id)/ vehicles.get_speed(merge_id), 0)   #computing time_headway of merging zone
+                else: 
+                    merge_timeheadway = 1000
+                
                 min_head_per_horizon_merging.append(merge_timeheadway)
                 speed_per_horizon_merging.append(merge_speed)
                 
@@ -307,7 +347,8 @@ def visualizer_rllib(args):
                     merge_timeheadways.append(merge_timeheadway)
                     #print(merge_timeheadway)
             if min_head_per_horizon_merging:
-                min_head_per_rollout_merging.append(min(min_head_per_horizon_merging))
+                if np.min(min_head_per_horizon_merging)>=0:
+                    min_head_per_rollout_merging.append(np.min(min_head_per_horizon_merging))
             if speed_per_horizon_merging:
                 mean_speed_per_rollout_merging.append(np.mean(speed_per_horizon_merging))
                 
@@ -335,7 +376,7 @@ def visualizer_rllib(args):
             if not multiagent and done:
                 break
         
-        min_head_all_merging.append(min(min_head_per_rollout_merging))
+        min_head_all_merging.append(np.min(min_head_per_rollout_merging))
         mean_head_all_merging.append(np.mean(min_head_per_rollout_merging))
         mean_speed_all_merging.append(np.mean(mean_speed_per_rollout_merging))
                 
@@ -358,8 +399,8 @@ def visualizer_rllib(args):
         min_vel_per_rollouts.append(np.min(min_vel_per_horizon))
         mean_head_per_rollouts.append(np.mean(mean_head_per_horizon))
         min_head_per_rollouts.append(np.min(min_head_per_horizon))
-        print("min and mean headway of each rollout:\n")
-        print(mean_head_per_rollouts)
+        print("min headway of each rollout:\n")
+        #print(mean_head_per_rollouts)
         print(min_head_per_rollouts)
         print(args.num_rollouts)
         #mean_speed.append(np.mean(vel))
@@ -379,7 +420,7 @@ def visualizer_rllib(args):
         for elem in allcar_pos_array:
             writer.writerow(elem)
     ''' 
-        
+    '''  
     print('==== Summary of results ====')
     print("Return:")
     print("THW you need:")
@@ -406,7 +447,7 @@ def visualizer_rllib(args):
 
     #print("\nMean Speed of each rollout")
     #print(mean_vel_per_horizon)
-    print("\nSpeed, mean (m/s):")
+    print("\nSpeed, mean (m/s) of whole highway:")
     print(np.mean(mean_vel_per_rollouts))
     
     print("\nMin Speed of each rollout")
@@ -414,14 +455,14 @@ def visualizer_rllib(args):
     print("\nSpeed, min (m/s):")
     print(np.mean(min_vel_per_rollouts))
     
-    print("\nMean THeadway of each rollout")
-    print(mean_head_per_rollouts)
-    print("\nTHeadway, mean (m/s):")
-    print(np.mean(mean_head_per_rollouts))
+   #print("\nMean THeadway of each rollout")
+    #print(mean_head_per_rollouts)
+    #print("\nTHeadway, mean (m/s):")
+    #print(np.mean(mean_head_per_rollouts))
     
-    print("\nMin THeadway of each rollout")
+    print("\nMin THeadway of each rollout of whole highway")
     print(min_head_per_rollouts)
-    print("\nTHeadway, min (m/s):")
+    print("\nTHeadway, min (m/s): of whole highway")
     print(np.min(min_head_per_rollouts))
     
     print("\nAverage minimum THeadway value")
@@ -429,7 +470,7 @@ def visualizer_rllib(args):
     
     print("\npercent of low THW vehicle")
     print(np.mean(percentage_low_THW))
-    
+    '''
     #print('Average, std: {}, {}'.format(np.mean(mean_speed), np.std(
     #    mean_speed)))
     #print("\nSpeed, std (m/s):")
@@ -455,7 +496,7 @@ def visualizer_rllib(args):
 
     # terminate the environment
     env.unwrapped.terminate()
-
+    
     # if prompted, convert the emission file into a csv file
     if args.gen_emission:
         time.sleep(0.1)
@@ -475,6 +516,9 @@ def visualizer_rllib(args):
 
         # delete the .xml version of the emission file
         os.remove(emission_path)
+    
+    #minimum_THW_merging = np.max(np.min(min_head_all_merging), 0)
+    return min_head_all_merging ,np.min(min_head_per_rollouts), mean_speed_all_merging, np.mean(mean_vel_per_rollouts)
 
 
 def create_parser():
@@ -533,7 +577,28 @@ def create_parser():
 
 
 if __name__ == '__main__':
-    parser = create_parser()
-    args = parser.parse_args()
-    ray.init(num_cpus=1)
-    visualizer_rllib(args)
+    exp_times = 1
+    head_merging = []
+    head_highway = []
+    speed_merging = []
+    speed_highway = []
+    
+    ray.init(num_cpus=20)
+    for i in range(exp_times):
+        parser = create_parser()
+        args = parser.parse_args()
+        min_head_merging ,min_head_highway, mean_speed_merging, mean_speed_highway = visualizer_rllib(args)
+        head_merging.append(min_head_merging)
+        head_highway.append(min_head_highway)
+        speed_merging.append(mean_speed_merging)
+        speed_highway.append(mean_speed_highway)
+        #ray.shutdown()
+    print('total in total')
+    print('min merging THW of'+ str(exp_times) + 'exp:')
+    print(np.mean(head_merging))
+    print('min highway THW of '+ str(exp_times) + 'exp:')
+    print(np.mean(head_highway))
+    print('min merging speed of '+ str(exp_times) + 'exp:')
+    print(np.mean(speed_merging))
+    print('min highway speed of '+ str(exp_times) + 'exp:')
+    print(np.mean(speed_highway))

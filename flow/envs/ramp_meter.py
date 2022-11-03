@@ -1,4 +1,4 @@
-"""
+""" 
 Environments for training vehicles to reduce congestion in a merge.
 
 This environment was used in:
@@ -7,6 +7,7 @@ TODO(ak): add paper after it has been published.
 
 from flow.envs.base import Env
 from flow.core import rewards
+from gym.spaces import Tuple
 
 from gym.spaces.box import Box
 
@@ -24,8 +25,7 @@ ADDITIONAL_ENV_PARAMS = {
     "num_rl": 5,
 }
 
-
-class MergePOEnv(Env):
+class RampMeterPOEnv(Env):
     """Partially observable merge environment.
 
     This environment is used to train autonomous vehicles to attenuate the
@@ -92,27 +92,39 @@ class MergePOEnv(Env):
 
         super().__init__(env_params, sim_params, network, simulator)
 
+    """ Treat the ramp meter as a vehicles, turn continuous action into discret signal"""
     @property
     def action_space(self):
         """See class definition."""
         return Box(
             low=-abs(self.env_params.additional_params["max_decel"]),
             high=self.env_params.additional_params["max_accel"],
-            shape=(self.num_rl, ),
+            shape=(self.num_rl + 1, ), # the +1 is for the extra ramp meter treated as a vehicle
             dtype=np.float32)
+
 
     @property
     def observation_space(self):
         """See class definition."""
-        return Box(low=-1000, high=1000, shape=(5 * self.num_rl, ), dtype=np.float32)
+        return Box(low=-2000, high=2000, shape=(6 * self.num_rl + 3, ), dtype=np.float32)
 
+    """ Treat the ramp meter as a vehicles, turn continuous action into discret signal"""
     def _apply_rl_actions(self, rl_actions):
         """See class definition."""
+        if rl_actions[0] > 0:
+            self.k.traffic_light.set_state(
+                node_id='bottom',
+                state='G')
+        else:
+            self.k.traffic_light.set_state(
+                node_id='bottom',
+                state='r')
+
         for i, rl_id in enumerate(self.rl_veh):
             # ignore rl vehicles outside the network
             if rl_id not in self.k.vehicle.get_rl_ids():
                 continue
-            self.k.vehicle.apply_acceleration(rl_id, rl_actions[i])
+            self.k.vehicle.apply_acceleration(rl_id, rl_actions[i+1])
 
     def get_state(self, rl_id=None, **kwargs):
         """See class definition."""
@@ -123,68 +135,111 @@ class MergePOEnv(Env):
         max_speed = self.k.network.max_speed()
         max_length = self.k.network.length()
 
-        observation = [0 for _ in range(5 * self.num_rl)]
+        observed_id = set()
+
+        observation = [0 for _ in range(6 * self.num_rl + 3)] # 3 extra space for the position of the merging vehicles
         for i, rl_id in enumerate(self.rl_veh):
             this_speed = self.k.vehicle.get_speed(rl_id)
             lead_id = self.k.vehicle.get_leader(rl_id)
-            follower = self.k.vehicle.get_follower(rl_id)
+            follow_id = self.k.vehicle.get_follower(rl_id)
 
-            if lead_id in ["", None]:
-                # in case leader is not visible
-                lead_speed = max_speed
-                lead_head = max_length
-            else:
+            if lead_id not in observed_id:
                 self.leader.append(lead_id)
-                lead_speed = self.k.vehicle.get_speed(lead_id)
-                lead_head = self.k.vehicle.get_x_by_id(lead_id) \
-                    - self.k.vehicle.get_x_by_id(rl_id) \
-                    - self.k.vehicle.get_length(rl_id)
+                
+            if follow_id not in observed_id:
+                self.follower.append(follow_id)
 
-            if follower in ["", None]:
-                # in case follower is not visible
-                follow_speed = 0
-                follow_head = max_length
-            else:
-                self.follower.append(follower)
-                follow_speed = self.k.vehicle.get_speed(follower)
-                follow_head = self.k.vehicle.get_headway(follower)
+            IDs = [rl_id, lead_id, follow_id]
+            positions = []
+            speeds = []
 
-            observation[5 * i + 0] = this_speed / max_speed
-            observation[5 * i + 1] = (lead_speed - this_speed) / max_speed
-            observation[5 * i + 2] = lead_head / max_length
-            observation[5 * i + 3] = (this_speed - follow_speed) / max_speed
-            observation[5 * i + 4] = follow_head / max_length
+            for cur_id in IDs:
+                # check if the vehicle has already been evaluated
+                if cur_id in observed_id:
+                    positions.append(0)
+                    speeds.append(0)
+                    continue
+                else:
+                    observed_id.add(cur_id)
+
+                cur_edge = self.k.vehicle.get_edge(cur_id)
+                if cur_edge == "left": # within the merging session
+                    positions.append(self.k.vehicle.get_position(cur_id))
+                elif cur_edge == "inflow_highway": # before the merging session
+                    positions.append(self.k.vehicle.get_position(cur_id) - 100) # negative number before the merging session
+                elif cur_edge == "center": # after the merging session
+                    positions.append(200 + self.k.vehicle.get_position(cur_id)) # distance beyond the merging session
+                else:
+                    positions.append(0)
+
+                cur_speed = self.k.vehicle.get_speed(cur_id)
+                speeds.append(cur_speed)
+
+            # speed of the RL vehicle, lead vehicle and following vehicle
+            for j in range(3):
+                observation[6 * i + j] = speeds[j]
+
+            # position of the RL vehicle, lead vehicle and following vehicle
+            for j in range(3):
+                observation[6 * i + j + 3] = positions[j]
+
+        # take the positions of the merge vehicles
+        merge_ids = self.k.vehicle.get_ids_by_edge("inflow_merge")
+        merge_id_count = 0
+        if len(merge_ids) >= 3:
+            print("-------------")
+            print(merge_ids)
+            for merge_id in merge_ids:
+                print("id: ", merge_id, " position: ", self.k.vehicle.get_position(merge_id))
+
+        for merge_id in merge_ids:
+            if merge_id_count >= 3:
+                break
+            observation[6 * self.num_rl + merge_id_count] = self.k.vehicle.get_position(merge_id)
+            merge_id_count = merge_id_count + 1
+
 
         return observation
 
     def compute_reward(self, rl_actions, **kwargs):
         """See class definition."""
-        if self.env_params.evaluate:
-            return np.mean(self.k.vehicle.get_speed(self.k.vehicle.get_ids()))
-        else:
-            # return a reward of 0 if a collision occurred
-            if kwargs["fail"]:
-                return 0
+        # return a reward of 0 if a collision occurred
+        if kwargs["fail"]:
+            return 0
 
-            # reward high system-level velocities
-            cost1 = rewards.desired_velocity(self, fail=kwargs["fail"])
+        # reward high system-level velocities
+        cost1 = rewards.desired_velocity(self, fail=kwargs["fail"])
 
-            # penalize small time headways
-            cost2 = 0
-            t_min = 1  # smallest acceptable time headway
-            for rl_id in self.rl_veh:
-                lead_id = self.k.vehicle.get_leader(rl_id)
-                if lead_id not in ["", None] \
-                        and self.k.vehicle.get_speed(rl_id) > 0:
-                    t_headway = max(
-                        self.k.vehicle.get_headway(rl_id) /
-                        self.k.vehicle.get_speed(rl_id), 0)
-                    cost2 += min((t_headway - t_min) / t_min, 0)
+        # penalize small time headways
+        cost2 = 0
+        t_min = 1  # smallest acceptable time headway
 
-            # weights for cost1, cost2, and cost3, respectively
-            eta1, eta2 = 1.00, 0.10
-            #eta1, eta2 = 1.00, 1.00
-            return max(eta1 * cost1 + eta2 * cost2, 0)
+        # penalize emergency brakes
+        cost3 = 0
+        low_acc = -7
+
+        for rl_id in self.rl_veh:
+            lead_id = self.k.vehicle.get_leader(rl_id)
+            follow_id = self.k.vehicle.get_follower(rl_id)
+            if lead_id not in ["", None] \
+                    and self.k.vehicle.get_speed(rl_id) > 0:
+
+                t_headway = max(
+                    self.k.vehicle.get_headway(rl_id) /
+                    self.k.vehicle.get_speed(rl_id), 0)
+                cost2 += min((t_headway - t_min) / t_min, 0)
+        
+        ids = self.k.vehicle.get_ids()
+        for idd in ids:
+            cur_acc = self.k.vehicle.get_accel(idd)
+            if cur_acc and cur_acc < low_acc:
+                cost3 -= (low_acc - cur_acc)**2
+
+        # weights for cost1, cost2, and cost3, respectively
+        #eta1, eta2, eta3 = 1.00, 0.10, 0.50
+        eta1, eta2 = 1.00, 1.00
+        #return max(eta1 * cost1 + eta2 * cost2 + eta3 * cost3, 0)
+        return  max(eta1 * cost1 + eta2 * cost2, 0)
 
     def additional_command(self):
         """See parent class.
